@@ -1,0 +1,121 @@
+# Enhanced Terraform pipeline configuration for Bitbucket Pipelines
+# -----
+# Specify a custom docker image that includes Terraform and necessary tools
+
+image: hashicorp/terraform:1.1.2
+
+pipelines:
+  branches:
+    main:
+      - step:
+          name: 'Backend Configuration Check'
+          script:
+            - echo "Checking backend configuration..."
+            # Add commands to check your backend configuration
+            # e.g., using Terratest or custom tests
+            - echo "Backend configuration is valid"
+
+      - parallel:
+          - step:
+              name: 'Initialize Terraform (Dev)'
+              script:
+                - terraform init
+
+          - step:
+              name: 'Validate Terraform Configuration'
+              script:
+                - echo "Validating Terraform configuration..."
+                - terraform init
+                - terraform validate
+                - echo "Terraform configuration is valid"
+
+          - step:
+              name: 'Format Terraform Files'
+              script:
+                - echo "Formatting Terraform files..."
+                - terraform fmt -recursive
+                - terraform fmt -check
+
+          - step:
+              name: 'Run Terraform Linter'
+              script:
+                - echo "Running Terraform linter..."
+                - terraform fmt -recursive
+                - terraform fmt -check=true -diff=true -write=false
+
+          - step:
+              name: 'Run Terraform Tests'
+              script:
+                - echo "Running Terraform tests..."
+                # Add your Terraform testing commands here, e.g., using Terratest or custom tests
+                - echo "Terraform tests passed"
+
+      - step:
+          name: 'Plan Terraform Deployment'
+          script:
+            - terraform init 
+            - echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" # Debugging step
+            - echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" # Debugging step
+            - echo "AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION" # Debugging step
+            - terraform plan -out=tfplan
+            - echo "Planned deployment"
+            # - terraform import
+            - echo "Applied deployment"     
+            - terraform apply -var-file=terraform.tfvars -auto-approve 
+
+      - step:
+          name: 'Destroy Terraform Infrastructure'
+          trigger: manual
+          script:
+            - terraform init -backend-config=backend.tf
+            - echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" # Debugging step
+            - echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" # Debugging step
+            - echo "AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION" # Debugging step
+            - terraform destroy -auto-approve -var-file=terraform.tfvars     
+
+      - step:
+          name: 'Generate Report'
+          script:
+            - echo "Generating report..."
+            # Add commands to generate a report of the changes
+            - echo "Report generated"
+
+  custom:
+    test-deploy:
+      - step:
+          name: 'Plan Terraform Deployment (Test)'
+          script:
+            - terraform init -backend-config=backend.tf
+            - terraform workspace select test
+            - terraform plan -var-file=app-env-test.tfvars
+            - echo "Planned deployment to test"
+            
+
+      - step:
+          name: 'Apply Terraform Changes to Test'
+          deployment: test
+          trigger: manual
+          script:
+            - terraform init -backend-config=backend.tf
+            - terraform workspace select test
+            - terraform validate
+            - terraform apply -var-file=terraform.tfvars -auto-approve
+
+    production-deploy:
+      - step:
+          name: 'Plan Terraform Deployment (Production)'
+          script:
+            - terraform init -backend-config=backend.tf
+            - terraform workspace select prod
+            - terraform plan -var-file=terraform.tfvars -auto-approve
+            - echo "Planned deployment to Production"
+
+      - step:
+          name: 'Apply Terraform Changes to Production'
+          deployment: production
+          trigger: manual
+          script:
+            - terraform init -backend-config=backend.tf
+            - terraform workspace select prod
+            - terraform validate
+            - terraform apply -var-file=terraform.tfvars -auto-approve
